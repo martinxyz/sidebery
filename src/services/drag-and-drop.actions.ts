@@ -523,6 +523,7 @@ const prevEventKeys = { alt: false, ctrl: false, shift: false }
 const path: ItemBounds[] = []
 export function onDragMove(e: DragEvent): void {
   if (!DnD.reactive.isStarted) return
+  if (DnD.reactive.dstType === DropType.Nowhere) return
   if (!pointerEl) return
   if (Sidebar.reactive.hiddenPanelsBar) return
 
