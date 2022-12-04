@@ -1,3 +1,4 @@
+/* eslint no-console: off */
 import { PRE_SCROLL } from 'src/defaults'
 import { Mouse, ResizingMode } from 'src/services/mouse'
 import { Settings } from 'src/services/settings'
@@ -125,6 +126,7 @@ export function startLongClick(
 ): void {
   clearTimeout(longClickTimeout)
   longClickTimeout = setTimeout(() => {
+    console.log('longClickTimeout')
     if (DnD.reactive.isStarted) return
     Mouse.longClickApplied = true
 
@@ -141,6 +143,7 @@ export function startLongClick(
       const tab = Tabs.byId[id]
       if (!tab) return
 
+      console.log('longClickTimeout, action:', action)
       if (action === 'reload') Tabs.reloadTabs([tab.id])
       if (action === 'duplicate') Tabs.duplicateTabs([tab.id])
       if (action === 'pin') Tabs.repinTabs([tab.id])

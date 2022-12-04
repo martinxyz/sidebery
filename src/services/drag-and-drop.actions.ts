@@ -1,3 +1,5 @@
+/* eslint no-console: off */
+/* eslint no-debugger: off */
 import * as Utils from 'src/utils'
 import { translate } from 'src/dict'
 import { BKM_OTHER_ID, CONTAINER_ID, NEWID, NOID, PRE_SCROLL } from 'src/defaults'
@@ -24,6 +26,7 @@ export function start(info: DragInfo, dstType?: DropType): void {
   if (info.panelId === undefined) info.panelId = Sidebar.reactive.activePanelId
 
   lastDragStartTime = Date.now()
+  console.log('--- START DRAG ----------------')
 
   if (
     (info.type === DragType.Tabs || info.type === DragType.TabsPanel) &&
@@ -191,6 +194,7 @@ function getDestInfo(): DstPlaceInfo {
     else info.containerId = CONTAINER_ID
   }
   if (info.index === -1) {
+    console.warn('--> mapping index -1 to last! (bug reproduced, or dropped inside)')
     // To the last position in branch/panel
     if (
       Utils.isTabsPanel(dstPanel) &&
@@ -210,6 +214,8 @@ function getDestInfo(): DstPlaceInfo {
       const parent = Bookmarks.reactive.byId[DnD.reactive.dstParentId]
       info.index = parent?.children?.length || 0
     }
+  } else {
+    console.warn('--> index', info.index, '(bug did not happen)')
   }
   return info
 }
@@ -289,6 +295,12 @@ function isContainerChanged(): boolean {
 
 export function onDragEnter(e: DragEvent): void {
   if (!(e.target as HTMLElement).getAttribute) return
+  console.log(
+    'onDragEnter{',
+    'data-dnd-type',
+    (e.target as HTMLElement).getAttribute('data-dnd-type'),
+    e.target
+  )
 
   // Handle drag and drop from outside
   if (!DnD.reactive.isStarted && !e?.relatedTarget) {
@@ -334,6 +346,7 @@ export function onDragEnter(e: DragEvent): void {
 
   const type = (e.target as HTMLElement).getAttribute('data-dnd-type')
   const id = (e.target as HTMLElement).getAttribute('data-dnd-id')
+  // console.log('onDragEnter:', 'data-dnd-type', type, e.target)
 
   DnD.reactive.pointerHover = false
 
@@ -343,12 +356,16 @@ export function onDragEnter(e: DragEvent): void {
 
   // Reset drag and drop if no type and id provided
   if (!type && !id) {
+    console.warn('onDragEnter} setting dstType to Nowhere (0)!') // <-- happens often
     DnD.reactive.dstType = DropType.Nowhere
     DnD.reactive.dstPin = false
     return
+  } else {
+    console.log('onDragEnter: we are somewhere, dstType was', DnD.reactive.dstType)
   }
 
   if (type === 'nav-item' && id) {
+    console.log('NOT IN REPRODUCER')
     DnD.reactive.dstPin = false
     DnD.reactive.dstParentId = NOID
 
@@ -383,16 +400,19 @@ export function onDragEnter(e: DragEvent): void {
   }
 
   if (type === 'hidden-panel' && id) {
+    console.log('NOT IN REPRODUCER')
     DnD.reactive.dstType = DropType.TabsPanel
     DnD.reactive.dstPanelId = id
     DnD.reactive.dstIndex = Sidebar.reactive.nav.indexOf(id)
   }
 
   if (type === 'hidden-layer') {
+    console.log('NOT IN REPRODUCER')
     if (Sidebar.reactive.hiddenPanelsBar) Sidebar.reactive.hiddenPanelsBar = false
   }
 
   if (type === 'pinned-bar') {
+    console.log('NOT IN REPRODUCER')
     const panel = Sidebar.reactive.panelsById[DnD.reactive.dstPanelId]
     DnD.reactive.dstPin = true
     if (Utils.isTabsPanel(panel) && panel.pinnedTabs.length) {
@@ -405,10 +425,14 @@ export function onDragEnter(e: DragEvent): void {
   }
 
   if (type === 'tab' && id) {
+    console.log('onDragEnter: tab with id', id)
+    const debugOld = DnD.reactive.dstIndex
     if (Sidebar.reactive.hiddenPanelsBar) Sidebar.reactive.hiddenPanelsBar = false
     const tab = Tabs.byId[id]
+    if (!tab) console.log('NOT IN REPRODUCER')
     if (!tab) return
     DnD.reactive.dstType = DropType.Tabs
+    console.warn('onDragEnter: setting dstType to Tabs (1)')
     DnD.reactive.dstPin = tab.pinned
     if (tab.pinned) DnD.reactive.dstIndex = tab.index
     else DnD.reactive.dstPanelId = tab.panelId
@@ -416,6 +440,11 @@ export function onDragEnter(e: DragEvent): void {
     if (Settings.state.dndTabAct && tab.pinned) {
       const delay = assertTabActivateMod(e) ? 0 : Settings.state.dndTabActDelay
       tabActivateTimeout(() => browser.tabs.update(tab.id, { active: true }), delay)
+    }
+    if (debugOld != DnD.reactive.dstIndex) {
+      console.log('onDragEnter: dstIndex changed', debugOld, '-->', DnD.reactive.dstIndex)
+    } else {
+      console.log('onDragEnter: dstIndex remains', DnD.reactive.dstIndex)
     }
   }
 
@@ -428,14 +457,25 @@ export function onDragEnter(e: DragEvent): void {
     DnD.reactive.dstPanelId = panelId ?? NOID
     DnD.reactive.dstPin = false
   }
+  console.log('onDragEnter} done')
 }
 
 export function onDragLeave(e: DragEvent): void {
-  if (e?.relatedTarget) return
+  console.log(
+    'onDragLeave{',
+    'data-dnd-type',
+    (e.target as HTMLElement).getAttribute('data-dnd-type'),
+    e.target
+  )
+  if (e?.relatedTarget) {
+    console.log('onDragLeave: no reset')
+    return
+  }
   if (Sidebar.reactive.hiddenPanelsBar) Sidebar.reactive.hiddenPanelsBar = false
   Selection.resetSelection()
   resetDragPointer()
   reset()
+  console.warn('onDragLeave: reset!!!')
 }
 
 function onPointerEnter(e: DragEvent): void {
@@ -503,7 +543,13 @@ let inPointerArea = false
 const prevEventKeys = { alt: false, ctrl: false, shift: false }
 const path: ItemBounds[] = []
 export function onDragMove(e: DragEvent): void {
+  console.log(
+    'onDragMove{',
+    'data-dnd-type',
+    (e.target as HTMLElement).getAttribute('data-dnd-type')
+  )
   if (!DnD.reactive.isStarted) return
+  // if (DnD.reactive.dstType === DropType.Nowhere) return // <-- this fixes the problem
   if (!pointerEl) return
   if (Sidebar.reactive.hiddenPanelsBar) return
 
@@ -575,7 +621,7 @@ export function onDragMove(e: DragEvent): void {
   const lvlChanged = prevDropLvlOffset !== dropLvlOffset
   prevDropLvlOffset = dropLvlOffset
 
-  // Entering in the pointer aria
+  // Entering in the pointer area
   if (x > 0 && x < 32 && (!inPointerArea || eventKeyChanged)) {
     inPointerArea = true
     onPointerEnter(e)
@@ -597,6 +643,7 @@ export function onDragMove(e: DragEvent): void {
       DnD.reactive.pointerLvl = 0
       const activePanel = Sidebar.reactive.panelsById[Sidebar.reactive.activePanelId]
       DnD.reactive.dstIndex = Utils.isTabsPanel(activePanel) ? activePanel.startTabIndex : -1
+      console.log('onDragMove: empty, dstIndex =', DnD.reactive.dstIndex)
       DnD.reactive.dstParentId = -1
     }
     return
@@ -613,10 +660,14 @@ export function onDragMove(e: DragEvent): void {
       DnD.reactive.pointerMode = DndPointerMode.Between
       DnD.reactive.pointerLvl = dropLvlOffset < 0 ? slot.lvl + dropLvlOffset : slot.lvl
       DnD.reactive.dstIndex = slot.folded ? -1 : slot.index + 1
+      console.log('onDragMove: end: dstIndex =', DnD.reactive.dstIndex)
       DnD.reactive.dstParentId = slot.parent
     }
 
     return
+  }
+  if (xLock || yLock) {
+    console.log('onDragMove: NOT IN REPRODUCER', xLock, yLock, pointerPos)
   }
 
   for (let slot, i = 0; i < boundsLen; i++) {
@@ -631,6 +682,7 @@ export function onDragMove(e: DragEvent): void {
     if (slot.in ? y < slot.top : y < slot.center) {
       dropPos = slot.start - 12 - scroll + (panel.topOffset - Sidebar.panelsTop)
       if (lvlChanged || (!xLock && !yLock && pointerPos !== dropPos)) {
+        console.log('onDragMove: Between: pointerPos', pointerPos, '-->', dropPos, '(== dropPos)')
         resetTabActivateTimeout()
         pointerPos = dropPos
         pointerEl.style.transform = `translateY(${pointerPos}px)`
@@ -639,6 +691,7 @@ export function onDragMove(e: DragEvent): void {
           DnD.reactive.pointerLvl = 0
           DnD.reactive.pointerMode = DndPointerMode.Between
           DnD.reactive.dstIndex = slot.index
+          console.warn('onDragMove: Between: setting dstIndex to', DnD.reactive.dstIndex)
           DnD.reactive.dstParentId = -1
           break
         }
@@ -656,6 +709,7 @@ export function onDragMove(e: DragEvent): void {
           DnD.reactive.pointerLvl = prevSlot.lvl + 1
           DnD.reactive.dstIndex = slot.index
           DnD.reactive.dstParentId = slot.parent
+          console.log('onDragMove: Between: first-child: dstIndex =', DnD.reactive.dstIndex)
         }
 
         // or Second-Last child in group
@@ -671,14 +725,35 @@ export function onDragMove(e: DragEvent): void {
 
           let index = -1
           if (DnD.reactive.dstType === DropType.Tabs) index = slot.index
+          if (DnD.reactive.dstType === DropType.Tabs) {
+            console.warn(
+              'onDragMove: Between: dstType == Tabs, using slot.index',
+              slot.index,
+              '(good case)'
+            )
+          } else {
+            console.warn(
+              'onDragMove: Between: dstType != Tabs, ignoring slot.index',
+              slot.index,
+              '(bad case!!!)'
+            )
+          }
           if (DnD.reactive.dstType === DropType.Bookmarks) {
+            console.log('NOT IN REPRODUCER')
             if (prevSlot.lvl === slot.lvl) index = prevSlot.index + 1
             else if (lvl === slot.lvl) index = slot.index
           }
 
           DnD.reactive.pointerLvl = lvl
           DnD.reactive.dstIndex = index
+          console.warn('onDragMove: Between: setting dstIndex to', DnD.reactive.dstIndex)
           DnD.reactive.dstParentId = parentSlot?.id ?? NOID
+        }
+      } else {
+        if (pointerPos === dropPos) {
+          console.log('onDragMove: Between: skipped! pointerPos', pointerPos, '(== dropPos)')
+        } else {
+          console.log('onDragMove: Between: skipped! (other reason) NOT IN REPRODUCER')
         }
       }
       break
@@ -686,6 +761,7 @@ export function onDragMove(e: DragEvent): void {
 
     // Inside
     if (slot.in && y < slot.bottom) {
+      // console.log('onDragMove: inside')
       dropPos = slot.center - 12 - scroll + (panel.topOffset - Sidebar.panelsTop)
       if (!xLock && !yLock && (pointerPos !== dropPos || eventKeyChanged)) {
         pointerPos = dropPos
@@ -696,6 +772,7 @@ export function onDragMove(e: DragEvent): void {
         DnD.reactive.pointerLvl = slot.lvl + 1
         DnD.reactive.dstIndex = -1
         DnD.reactive.dstParentId = slot.id
+        console.log('onDragMove: Inside: setting dstIndex -1 and pointerPos', pointerPos)
 
         // Entering in the pointer aria
         if (x < 32 && Settings.state.dndExp === 'pointer') {
@@ -768,6 +845,7 @@ export function isDropEventConsumed(): boolean {
  * Drop event handler
  */
 export async function onDrop(e: DragEvent): Promise<void> {
+  // console.log('onDrop', e.target)
   dropEventWasConsumed()
 
   // Handle native firefox tabs
@@ -844,6 +922,7 @@ export async function onDrop(e: DragEvent): Promise<void> {
     const srcInfo = getSrcInfo()
     const destInfo = getDestInfo()
     const reopenNeeded = isContainerChanged()
+    console.log('drop:', destInfo.index, JSON.stringify(destInfo))
 
     if (reopenNeeded) await Tabs.reopen(DnD.items, destInfo)
     else await Tabs.move(DnD.items, srcInfo, destInfo)
@@ -903,6 +982,8 @@ export async function onDrop(e: DragEvent): Promise<void> {
   Selection.resetSelection()
 
   if (tabsPanelsSaveNeeded) Sidebar.saveSidebar()
+
+  console.log('--- END DROP ------------------')
 }
 
 let resetOtherTimeout: number | undefined
